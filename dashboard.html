@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WARPONG-POS - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body class="bg-[#0a0a0a] h-screen flex">
+    <!-- Sidebar -->
+    <div class="w-80 bg-[#111] border-r border-[#2a2a2a] flex flex-col">
+        <div class="p-4 border-b border-[#2a2a2a]">
+            <h2 class="text-white font-bold flex items-center gap-2">
+                <i class="fas fa-users text-[#1DB954]"></i>
+                WARPONG-POS
+            </h2>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4" id="userList">
+            <!-- User list akan diisi lewat JS -->
+        </div>
+        <div class="p-4 border-t border-[#2a2a2a]">
+            <div class="flex items-center gap-3 text-white" id="userProfile">
+                <img src="" class="w-10 h-10 rounded-full" id="avatar">
+                <div>
+                    <p class="font-bold" id="nama"></p>
+                    <p class="text-xs text-gray-400" id="status">Online</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content (Map) -->
+    <div class="flex-1 relative">
+        <div id="map" class="h-full w-full"></div>
+    </div>
+
+    <!-- Chat Panel -->
+    <div class="w-80 bg-[#111] border-l border-[#2a2a2a] flex flex-col">
+        <div class="p-4 border-b border-[#2a2a2a]">
+            <h3 class="text-white font-bold">Chat</h3>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4" id="chatMessages"></div>
+        <div class="p-4 border-t border-[#2a2a2a]">
+            <div class="flex gap-2">
+                <input type="text" id="chatInput" placeholder="Tulis pesan..." 
+                       class="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-white text-sm">
+                <button onclick="sendMessage()" class="bg-[#1DB954] text-white px-4 py-2 rounded-lg">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://improved-space-fiesta-wrjpq7jj9495cgw7x-5000.app.github.dev/';
+        const user = JSON.parse(localStorage.getItem('user'));
+        let map, markers = {}, socket;
+        let selectedUser = null;
+
+        if (!user) window.location.href = 'index.html';
+
+        // Init map
+        map = L.map('map').setView([-6.2088, 106.8456], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // Connect socket
+        socket = io(API_URL);
+        socket.emit('login', user.username);
+
+        socket.on('user-location', (data) => {
+            if (markers[data.username]) {
+                markers[data.username].setLatLng([data.lat, data.lng]);
+            } else {
+                markers[data.username] = L.marker([data.lat, data.lng]).addTo(map)
+                    .bindPopup(data.username);
+            }
+        });
+
+        // Load users
+        async function loadUsers() {
+            const res = await fetch(API_URL + '/api/users');
+            const data = await res.json();
+            
+            const userList = document.getElementById('userList');
+            userList.innerHTML = '';
+            
+            data.users.forEach(u => {
+                if (u.username !== user.username) {
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center gap-3 p-3 bg-[#1a1a1a] rounded-lg mb-2 cursor-pointer hover:bg-[#2a2a2a]';
+                    div.onclick = () => selectUser(u.username);
+                    div.innerHTML = `
+                        <img src="${u.avatar}" class="w-10 h-10 rounded-full">
+                        <div>
+                            <p class="text-white font-medium">${u.nama}</p>
+                            <p class="text-xs text-gray-400">@${u.username}</p>
+                        </div>
+                    `;
+                    userList.appendChild(div);
+                }
+            });
+        }
+        loadUsers();
+
+        // Profile
+        document.getElementById('avatar').src = user.avatar;
+        document.getElementById('nama').textContent = user.nama;
+
+        function selectUser(username) {
+            selectedUser = username;
+            loadChat(username);
+        }
+
+        async function loadChat(to) {
+            const res = await fetch(API_URL + `/api/messages/${user.username}/${to}`);
+            const data = await res.json();
+            
+            const chatDiv = document.getElementById('chatMessages');
+            chatDiv.innerHTML = '';
+            
+            data.messages.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = msg.from === user.username ? 'text-right mb-2' : 'mb-2';
+                div.innerHTML = `
+                    <div class="inline-block bg-[#1a1a1a] text-white p-2 rounded-lg max-w-xs">
+                        <p class="text-xs text-[#1DB954] mb-1">${msg.from}</p>
+                        <p>${msg.message}</p>
+                    </div>
+                `;
+                chatDiv.appendChild(div);
+            });
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message || !selectedUser) return;
+            
+            socket.emit('send-message', {
+                from: user.username,
+                to: selectedUser,
+                message
+            });
+            
+            input.value = '';
+        }
+
+        socket.on('new-message', (data) => {
+            if (data.from === selectedUser || data.to === selectedUser) {
+                loadChat(selectedUser);
+            }
+        });
+
+        // Get location
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition((pos) => {
+                const {latitude, longitude} = pos.coords;
+                
+                fetch(API_URL + '/api/location', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        token: localStorage.getItem('token'),
+                        lat: latitude,
+                        lng: longitude
+                    })
+                });
+                
+                socket.emit('send-location', {
+                    username: user.username,
+                    lat: latitude,
+                    lng: longitude
+                });
+            });
+        }
+    </script>
+</body>
+</html>
