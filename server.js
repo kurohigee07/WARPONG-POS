@@ -23,9 +23,28 @@ app.use(express.json());
 // ============================================
 const MONGODB_URL = 'isi_nanti_setelah_bikin_mongodb';
 
-mongoose.connect(MONGODB_URL)
-.then(() => console.log('✅ Database connected'))
-.catch(err => console.log('❌ Database error:', err));
+// HAPUS atau KOMENTAR yang ini:
+// mongoose.connect(process.env.MONGODB_URL);
+
+// GANTI DENGAN INI:
+const connectDB = async () => {
+  try {
+    // Force pake mongodb://
+    const url = process.env.MONGODB_URL;
+    console.log('Mencoba koneksi ke:', url);
+    
+    await mongoose.connect(url, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    
+    console.log('✅ Database connected!');
+  } catch (error) {
+    console.log('❌ Database error:', error.message);
+  }
+};
+
+connectDB();
 
 // ============================================
 // SCHEMA
