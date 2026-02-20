@@ -19,7 +19,7 @@ app.use(cors());
 app.use(express.json());
 
 // ============================================
-// DATABASE SEDERHANA (PAKE FILE JSON)
+// DATABASE SEDERHANA (PAKE FILE JSON) - TIDAK PAKE MONGODB
 // ============================================
 const DB_PATH = './db.json';
 
@@ -56,8 +56,10 @@ const writeDB = (data) => {
 console.log('✅ Database siap (pake file JSON)');
 
 // ============================================
-// API REGISTER
+// API ENDPOINTS
 // ============================================
+
+// Register
 app.post('/api/register', async (req, res) => {
   try {
     const { username, password, nama } = req.body;
@@ -95,9 +97,7 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// ============================================
-// API LOGIN
-// ============================================
+// Login
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -141,9 +141,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// ============================================
-// API UPDATE LOKASI
-// ============================================
+// Update lokasi
 app.post('/api/location', async (req, res) => {
   try {
     const { token, lat, lng } = req.body;
@@ -163,9 +161,7 @@ app.post('/api/location', async (req, res) => {
   }
 });
 
-// ============================================
-// API GET USERS
-// ============================================
+// Get users
 app.get('/api/users', (req, res) => {
   const db = readDB();
   const users = db.users.map(u => ({
@@ -179,9 +175,7 @@ app.get('/api/users', (req, res) => {
   res.json({ success: true, users });
 });
 
-// ============================================
-// API GET MESSAGES
-// ============================================
+// Get messages
 app.get('/api/messages/:from/:to', (req, res) => {
   try {
     const { from, to } = req.params;
@@ -198,9 +192,7 @@ app.get('/api/messages/:from/:to', (req, res) => {
   }
 });
 
-// ============================================
-// ROOT ENDPOINT
-// ============================================
+// Root endpoint
 app.get('/', (req, res) => {
   res.json({ 
     message: 'API WARPONG-POS berjalan!',
@@ -296,7 +288,8 @@ io.on('connection', (socket) => {
 // ============================================
 // START SERVER
 // ============================================
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server berjalan di port ${PORT}`);
+  console.log(`✅ Server jalan di port ${PORT}`);
+  console.log('✅ Database pake file JSON (gak perlu MongoDB)');
 });
