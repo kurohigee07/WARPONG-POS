@@ -13,9 +13,26 @@
         body { font-family: 'Inter', sans-serif; }
         #map { height: 100%; width: 100%; z-index: 1; }
         .chat-messages { scroll-behavior: smooth; }
+        .mood-selector {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            color: white;
+            font-size: 0.875rem;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            cursor: pointer;
+        }
+        .mood-selector:hover {
+            border-color: #1DB954;
+        }
     </style>
 </head>
 <body class="bg-[#0a0a0a] h-screen flex overflow-hidden">
+    <!-- Dark Mode Toggle -->
+    <button onclick="toggleDarkMode()" class="fixed top-4 right-4 bg-[#1a1a1a] text-white p-3 rounded-full z-50 shadow-lg hover:bg-[#2a2a2a] transition">
+        <i class="fas fa-moon" id="darkModeIcon"></i>
+    </button>
+
     <!-- Sidebar Kiri - User List -->
     <div class="w-80 bg-[#111] border-r border-[#2a2a2a] flex flex-col">
         <div class="p-4 border-b border-[#2a2a2a]">
@@ -25,7 +42,25 @@
             </h2>
         </div>
         
-        <div class="flex-1 overflow-y-auto p-4" id="userList">
+        <!-- Online Counter -->
+        <div class="p-4 border-b border-[#2a2a2a] bg-[#1a1a1a]">
+            <div class="flex justify-between items-center">
+                <span class="text-sm text-gray-400">
+                    <i class="fas fa-circle text-green-500 text-xs mr-2"></i>Online sekarang
+                </span>
+                <span class="text-white font-bold" id="onlineCount">0</span>
+            </div>
+        </div>
+        
+        <!-- Broadcast Button -->
+        <div class="p-4">
+            <button onclick="broadcastNgopi()" class="w-full bg-[#1DB954] hover:bg-[#169c46] text-white font-bold py-2 px-4 rounded-lg transition flex items-center justify-center gap-2">
+                <i class="fas fa-coffee"></i> Ngopi Yuk!
+            </button>
+        </div>
+        
+        <!-- User List -->
+        <div class="flex-1 overflow-y-auto px-4 pb-4" id="userList">
             <!-- Loading -->
             <div class="text-center text-gray-400 py-8">
                 <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
@@ -33,13 +68,28 @@
             </div>
         </div>
         
-        <div class="p-4 border-t border-[#2a2a2a]">
-            <div class="flex items-center gap-3 text-white" id="userProfile">
+        <!-- Profile Section -->
+        <div class="p-4 border-t border-[#2a2a2a] bg-[#1a1a1a]">
+            <div class="flex items-center gap-3 text-white mb-3">
                 <img src="" class="w-12 h-12 rounded-full border-2 border-[#1DB954]" id="avatar">
-                <div>
+                <div class="flex-1">
                     <p class="font-bold" id="nama"></p>
                     <p class="text-xs text-gray-400" id="status">Online</p>
                 </div>
+            </div>
+            
+            <!-- Mood Selector -->
+            <div class="relative">
+                <select id="moodSelector" class="w-full bg-[#0a0a0a] text-white text-sm rounded-lg px-3 py-2 border border-[#2a2a2a] focus:border-[#1DB954] focus:outline-none">
+                    <option value="😊 Lagi seneng">😊 Lagi seneng</option>
+                    <option value="😴 Lagi gabut">😴 Lagi gabut</option>
+                    <option value="🍽️ Lagi makan">🍽️ Lagi makan</option>
+                    <option value="☕ Lagi ngopi">☕ Lagi ngopi</option>
+                    <option value="🏠 Di rumah">🏠 Di rumah</option>
+                    <option value="💻 Lagi ngoding">💻 Lagi ngoding</option>
+                    <option value="📺 Nonton TV">📺 Nonton TV</option>
+                    <option value="🚗 Di jalan">🚗 Di jalan</option>
+                </select>
             </div>
         </div>
     </div>
@@ -87,7 +137,7 @@
 
     <script>
         // ============================================
-        // KONFIGURASI - LINK BACKEND CODESPACES LU
+        // KONFIGURASI - GANTI DENGAN LINK BACKEND LU
         // ============================================
         const API_URL = 'https://improved-space-fiesta-wrjpq7jj9495cgw7x-5000.app.github.dev';
         
@@ -107,6 +157,24 @@
         let socket;
         let selectedUser = null;
         let onlineUsers = new Set();
+        let userMoods = {};
+
+        // ============================================
+        // DARK MODE TOGGLE
+        // ============================================
+        function toggleDarkMode() {
+            document.body.classList.toggle('bg-[#f5f5f5]');
+            document.body.classList.toggle('bg-[#0a0a0a]');
+            
+            const icon = document.getElementById('darkModeIcon');
+            if (icon.classList.contains('fa-moon')) {
+                icon.classList.remove('fa-moon');
+                icon.classList.add('fa-sun');
+            } else {
+                icon.classList.remove('fa-sun');
+                icon.classList.add('fa-moon');
+            }
+        }
 
         // ============================================
         // INIT MAP
@@ -138,11 +206,13 @@
             socket.on('user-online', (username) => {
                 onlineUsers.add(username);
                 updateUserStatus(username, 'online');
+                updateOnlineCount();
             });
             
             socket.on('user-offline', (username) => {
                 onlineUsers.delete(username);
                 updateUserStatus(username, 'offline');
+                updateOnlineCount();
             });
             
             socket.on('new-message', (data) => {
@@ -150,24 +220,96 @@
                     loadChat(selectedUser);
                 }
             });
+            
+            socket.on('broadcast', (data) => {
+                // Tampilin notifikasi broadcast
+                alert(`📢 ${data.from}: ${data.message}`);
+            });
+            
+            socket.on('mood-update', (data) => {
+                userMoods[data.username] = data.mood;
+                updateUserMood(data.username, data.mood);
+            });
         }
         initSocket();
 
         // ============================================
+        // UPDATE ONLINE COUNT
+        // ============================================
+        function updateOnlineCount() {
+            document.getElementById('onlineCount').textContent = onlineUsers.size;
+        }
+
+        // ============================================
+        // BROADCAST NGOPI
+        // ============================================
+        function broadcastNgopi() {
+            const lokasi = prompt("Mau ngopi dimana? (isi lokasi)");
+            if (lokasi && lokasi.trim() !== '') {
+                socket.emit('broadcast', {
+                    from: user.nama || user.username,
+                    message: `Ngopi yuk di ${lokasi}! ☕`
+                });
+                alert(`Broadcast terkirim! 🎉`);
+            }
+        }
+
+        // ============================================
+        // MOOD SELECTOR
+        // ============================================
+        document.getElementById('moodSelector').addEventListener('change', (e) => {
+            const mood = e.target.value;
+            socket.emit('update-mood', {
+                username: user.username,
+                mood: mood
+            });
+        });
+
+        // ============================================
         // UPDATE MARKER DI MAP
         // ============================================
-        function updateMarker(username, lat, lng) {
+        function updateMarker(username, lat, lng, lastSeen) {
             if (markers[username]) {
                 markers[username].setLatLng([lat, lng]);
             } else {
-                markers[username] = L.marker([lat, lng]).addTo(map)
-                    .bindPopup(`
-                        <div class="text-center">
-                            <strong>${username}</strong>
-                            <br>
-                            <span class="text-xs">Online</span>
-                        </div>
-                    `);
+                const mood = userMoods[username] || '😊 Online';
+                const marker = L.marker([lat, lng]).addTo(map);
+                
+                const popupContent = `
+                    <div class="text-center">
+                        <strong>${username}</strong>
+                        <br>
+                        <span class="text-xs">${mood}</span>
+                        <br>
+                        <span class="text-xs text-gray-500">
+                            ${lastSeen ? 'Terakhir ' + new Date(lastSeen).toLocaleTimeString() : 'Online'}
+                        </span>
+                    </div>
+                `;
+                
+                marker.bindPopup(popupContent);
+                markers[username] = marker;
+            }
+        }
+
+        // ============================================
+        // UPDATE USER MOOD
+        // ============================================
+        function updateUserMood(username, mood) {
+            const userDiv = document.getElementById(`user-${username}`);
+            if (userDiv) {
+                let moodSpan = userDiv.querySelector('.user-mood');
+                if (moodSpan) {
+                    moodSpan.textContent = mood;
+                } else {
+                    const infoDiv = userDiv.querySelector('.user-info');
+                    if (infoDiv) {
+                        const newMood = document.createElement('p');
+                        newMood.className = 'user-mood text-xs text-gray-400 mt-1';
+                        newMood.textContent = mood;
+                        infoDiv.appendChild(newMood);
+                    }
+                }
             }
         }
 
@@ -186,19 +328,21 @@
                     if (u.username !== user.username) {
                         const status = onlineUsers.has(u.username) ? 'online' : 'offline';
                         const statusColor = status === 'online' ? 'bg-green-500' : 'bg-gray-500';
+                        const mood = userMoods[u.username] || '😊 Online';
                         
                         const div = document.createElement('div');
                         div.id = `user-${u.username}`;
-                        div.className = 'flex items-center gap-3 p-3 bg-[#1a1a1a] rounded-lg mb-2 cursor-pointer hover:bg-[#2a2a2a] transition';
+                        div.className = 'flex items-start gap-3 p-3 bg-[#1a1a1a] rounded-lg mb-2 cursor-pointer hover:bg-[#2a2a2a] transition';
                         div.onclick = () => selectUser(u.username, u.nama);
                         div.innerHTML = `
                             <div class="relative">
                                 <img src="${u.avatar}" class="w-10 h-10 rounded-full">
                                 <span class="absolute bottom-0 right-0 w-3 h-3 ${statusColor} rounded-full border-2 border-[#1a1a1a]"></span>
                             </div>
-                            <div class="flex-1">
+                            <div class="flex-1 user-info">
                                 <p class="text-white font-medium">${u.nama}</p>
                                 <p class="text-xs text-gray-400">@${u.username}</p>
+                                <p class="text-xs text-gray-400 mt-1 user-mood">${mood}</p>
                             </div>
                         `;
                         userList.appendChild(div);
@@ -321,50 +465,4 @@
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
                 (pos) => {
-                    const { latitude, longitude } = pos.coords;
-                    
-                    document.getElementById('locationStatus').innerHTML = 
-                        `<i class="fas fa-check-circle text-[#1DB954] mr-2"></i>Lokasi aktif`;
-                    
-                    // Kirim ke backend
-                    fetch(API_URL + '/api/location', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            token: localStorage.getItem('token'),
-                            lat: latitude,
-                            lng: longitude
-                        })
-                    });
-                    
-                    // Kirim via socket
-                    socket.emit('send-location', {
-                        username: user.username,
-                        lat: latitude,
-                        lng: longitude
-                    });
-                    
-                    // Update marker sendiri
-                    updateMarker(user.username, latitude, longitude);
-                    
-                    // Center map ke posisi sendiri
-                    map.setView([latitude, longitude], 13);
-                },
-                (err) => {
-                    document.getElementById('locationStatus').innerHTML = 
-                        `<i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>Gagal dapat lokasi`;
-                }
-            );
-        } else {
-            document.getElementById('locationStatus').innerHTML = 
-                `<i class="fas fa-times-circle text-red-500 mr-2"></i>Browser gak support GPS`;
-        }
-
-        // ============================================
-        // PROFILE
-        // ============================================
-        document.getElementById('avatar').src = user.avatar;
-        document.getElementById('nama').textContent = user.nama;
-    </script>
-</body>
-</html>
+             
