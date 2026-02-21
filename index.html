@@ -6,6 +6,9 @@
     <title>WARPONG-POS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
 </head>
 <body class="bg-gradient-to-br from-[#0a0a0a] to-[#1a1a1a] min-h-screen flex items-center justify-center p-4">
     <div class="bg-[#111] p-8 rounded-2xl shadow-2xl w-full max-w-md border border-[#2a2a2a]">
@@ -18,36 +21,138 @@
         <div id="loginForm">
             <div class="mb-4">
                 <label class="block text-gray-300 mb-2">Username</label>
-                <input type="text" id="username" class="w-full p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white" placeholder="username">
+                <input type="text" id="username" class="w-full p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white focus:border-[#1DB954] focus:outline-none" placeholder="username">
             </div>
             <div class="mb-6">
                 <label class="block text-gray-300 mb-2">Password</label>
-                <input type="password" id="password" class="w-full p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white" placeholder="••••••••">
+                <input type="password" id="password" class="w-full p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white focus:border-[#1DB954] focus:outline-none" placeholder="••••••••">
             </div>
-            <button onclick="login()" class="w-full bg-[#1DB954] hover:bg-[#169c46] text-white font-bold py-3 px-4 rounded-lg">
-                Login
+            <button onclick="login()" class="w-full bg-[#1DB954] hover:bg-[#169c46] text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+                <i class="fas fa-sign-in-alt mr-2"></i>Login
             </button>
             <p class="text-center text-gray-400 mt-4">
                 Belum punya akun? 
                 <button onclick="showRegister()" class="text-[#1DB954] hover:underline">Daftar</button>
             </p>
         </div>
+
+        <div id="registerForm" class="hidden">
+            <div class="mb-4">
+                <label class="block text-gray-300 mb-2">Username</label>
+                <input type="text" id="regUsername" class="w-full p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white focus:border-[#1DB954] focus:outline-none">
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-300 mb-2">Nama Panggilan</label>
+                <input type="text" id="regNama" class="w-full p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white focus:border-[#1DB954] focus:outline-none">
+            </div>
+            <div class="mb-6">
+                <label class="block text-gray-300 mb-2">Password</label>
+                <input type="password" id="regPassword" class="w-full p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white focus:border-[#1DB954] focus:outline-none">
+            </div>
+            <button onclick="register()" class="w-full bg-[#1DB954] hover:bg-[#169c46] text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+                <i class="fas fa-user-plus mr-2"></i>Daftar
+            </button>
+            <p class="text-center text-gray-400 mt-4">
+                Udah punya akun? 
+                <button onclick="showLogin()" class="text-[#1DB954] hover:underline">Login</button>
+            </p>
+        </div>
     </div>
 
     <script>
+        // ============================================
+        // KONFIGURASI - LINK BACKEND CODESPACES LU
+        // ============================================
         const API_URL = 'https://improved-space-fiesta-wrjpq7jj9495cgw7x-5000.app.github.dev/';
-        
+
+        // ============================================
+        // FUNGSI LOGIN
+        // ============================================
         async function login() {
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             
-            const res = await fetch(API_URL + '/api/login', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username, password})
-            });
-            const data = await res.json();
-            alert(JSON.stringify(data));
+            if (!username || !password) {
+                alert('Isi username dan password dulu bos!');
+                return;
+            }
+            
+            try {
+                console.log('Mencoba login ke:', API_URL + '/api/login');
+                
+                const res = await fetch(API_URL + '/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await res.json();
+                console.log('Response:', data);
+                
+                if (data.success) {
+                    // Simpan data user
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    
+                    // Redirect ke dashboard
+                    window.location.href = 'dashboard.html';
+                } else {
+                    alert('Login gagal: ' + (data.message || 'Username/password salah'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Gagal konek ke server. Cek backend di Codespaces udah jalan belum.');
+            }
+        }
+
+        // ============================================
+        // FUNGSI REGISTER
+        // ============================================
+        async function register() {
+            const username = document.getElementById('regUsername').value;
+            const nama = document.getElementById('regNama').value;
+            const password = document.getElementById('regPassword').value;
+            
+            if (!username || !nama || !password) {
+                alert('Isi semua data dulu bos!');
+                return;
+            }
+            
+            try {
+                console.log('Mencoba register ke:', API_URL + '/api/register');
+                
+                const res = await fetch(API_URL + '/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, nama })
+                });
+                
+                const data = await res.json();
+                console.log('Response:', data);
+                
+                if (data.success) {
+                    alert('Register berhasil! Silakan login.');
+                    showLogin();
+                } else {
+                    alert('Register gagal: ' + (data.message || 'Username sudah dipakai'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Gagal konek ke server. Cek backend di Codespaces udah jalan belum.');
+            }
+        }
+
+        // ============================================
+        // FUNGSI TAMPILAN
+        // ============================================
+        function showRegister() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
+        }
+
+        function showLogin() {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('registerForm').classList.add('hidden');
         }
     </script>
 </body>
