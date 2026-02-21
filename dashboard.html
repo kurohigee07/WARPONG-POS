@@ -137,7 +137,7 @@
 
     <script>
         // ============================================
-        // KONFIGURASI - GANTI DENGAN LINK BACKEND LU
+        // KONFIGURASI - LINK BACKEND CODESPACES (UDAH BENER)
         // ============================================
         const API_URL = 'https://improved-space-fiesta-wrjpq7jj9495cgw7x-5000.app.github.dev';
         
@@ -222,7 +222,6 @@
             });
             
             socket.on('broadcast', (data) => {
-                // Tampilin notifikasi broadcast
                 alert(`📢 ${data.from}: ${data.message}`);
             });
             
@@ -465,4 +464,4 @@
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
                 (pos) => {
-             
+                    const { latitude, longitude } = po
