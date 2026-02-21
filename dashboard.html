@@ -9,9 +9,14 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        #map { height: 100%; width: 100%; z-index: 1; }
+        .chat-messages { scroll-behavior: smooth; }
+    </style>
 </head>
-<body class="bg-[#0a0a0a] h-screen flex">
-    <!-- Sidebar -->
+<body class="bg-[#0a0a0a] h-screen flex overflow-hidden">
+    <!-- Sidebar Kiri - User List -->
     <div class="w-80 bg-[#111] border-r border-[#2a2a2a] flex flex-col">
         <div class="p-4 border-b border-[#2a2a2a]">
             <h2 class="text-white font-bold flex items-center gap-2">
@@ -19,12 +24,18 @@
                 WARPONG-POS
             </h2>
         </div>
+        
         <div class="flex-1 overflow-y-auto p-4" id="userList">
-            <!-- User list akan diisi lewat JS -->
+            <!-- Loading -->
+            <div class="text-center text-gray-400 py-8">
+                <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                <p>Memuat anggota...</p>
+            </div>
         </div>
+        
         <div class="p-4 border-t border-[#2a2a2a]">
             <div class="flex items-center gap-3 text-white" id="userProfile">
-                <img src="" class="w-10 h-10 rounded-full" id="avatar">
+                <img src="" class="w-12 h-12 rounded-full border-2 border-[#1DB954]" id="avatar">
                 <div>
                     <p class="font-bold" id="nama"></p>
                     <p class="text-xs text-gray-400" id="status">Online</p>
@@ -33,22 +44,41 @@
         </div>
     </div>
 
-    <!-- Main Content (Map) -->
+    <!-- Main Content - Map -->
     <div class="flex-1 relative">
-        <div id="map" class="h-full w-full"></div>
+        <div id="map"></div>
+        
+        <!-- Info Lokasi -->
+        <div class="absolute bottom-4 left-4 bg-[#111] border border-[#2a2a2a] rounded-lg px-4 py-2 text-sm text-gray-300 z-10">
+            <i class="fas fa-location-dot text-[#1DB954] mr-2"></i>
+            <span id="locationStatus">Mendapatkan lokasi...</span>
+        </div>
     </div>
 
-    <!-- Chat Panel -->
+    <!-- Sidebar Kanan - Chat -->
     <div class="w-80 bg-[#111] border-l border-[#2a2a2a] flex flex-col">
         <div class="p-4 border-b border-[#2a2a2a]">
-            <h3 class="text-white font-bold">Chat</h3>
+            <h3 class="text-white font-bold flex items-center gap-2">
+                <i class="fas fa-comment text-[#1DB954]"></i>
+                Chat
+                <span id="chatWith" class="text-sm font-normal text-gray-400 ml-2"></span>
+            </h3>
         </div>
-        <div class="flex-1 overflow-y-auto p-4" id="chatMessages"></div>
+        
+        <div class="flex-1 overflow-y-auto p-4 chat-messages" id="chatMessages">
+            <div class="text-center text-gray-500 text-sm py-8">
+                Pilih user untuk mulai chat
+            </div>
+        </div>
+        
         <div class="p-4 border-t border-[#2a2a2a]">
             <div class="flex gap-2">
                 <input type="text" id="chatInput" placeholder="Tulis pesan..." 
-                       class="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-white text-sm">
-                <button onclick="sendMessage()" class="bg-[#1DB954] text-white px-4 py-2 rounded-lg">
+                       class="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-white text-sm focus:border-[#1DB954] focus:outline-none"
+                       disabled>
+                <button onclick="sendMessage()" id="sendBtn" 
+                        class="bg-[#1DB954] text-white px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled>
                     <i class="fas fa-paper-plane"></i>
                 </button>
             </div>
@@ -56,87 +86,206 @@
     </div>
 
     <script>
+        // ============================================
+        // KONFIGURASI - LINK BACKEND CODESPACES LU
+        // ============================================
         const API_URL = 'https://improved-space-fiesta-wrjpq7jj9495cgw7x-5000.app.github.dev/';
+        
+        // ============================================
+        // CEK LOGIN
+        // ============================================
         const user = JSON.parse(localStorage.getItem('user'));
-        let map, markers = {}, socket;
+        if (!user) {
+            window.location.href = 'index.html';
+        }
+
+        // ============================================
+        // VARIABEL GLOBAL
+        // ============================================
+        let map;
+        let markers = {};
+        let socket;
         let selectedUser = null;
+        let onlineUsers = new Set();
 
-        if (!user) window.location.href = 'index.html';
-
-        // Init map
-        map = L.map('map').setView([-6.2088, 106.8456], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-        }).addTo(map);
-
-        // Connect socket
-        socket = io(API_URL);
-        socket.emit('login', user.username);
-
-        socket.on('user-location', (data) => {
-            if (markers[data.username]) {
-                markers[data.username].setLatLng([data.lat, data.lng]);
-            } else {
-                markers[data.username] = L.marker([data.lat, data.lng]).addTo(map)
-                    .bindPopup(data.username);
-            }
-        });
-
-        // Load users
-        async function loadUsers() {
-            const res = await fetch(API_URL + '/api/users');
-            const data = await res.json();
+        // ============================================
+        // INIT MAP
+        // ============================================
+        function initMap() {
+            map = L.map('map').setView([-6.2088, 106.8456], 13);
             
-            const userList = document.getElementById('userList');
-            userList.innerHTML = '';
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+        }
+        initMap();
+
+        // ============================================
+        // SOCKET.IO CONNECTION
+        // ============================================
+        function initSocket() {
+            socket = io(API_URL);
             
-            data.users.forEach(u => {
-                if (u.username !== user.username) {
-                    const div = document.createElement('div');
-                    div.className = 'flex items-center gap-3 p-3 bg-[#1a1a1a] rounded-lg mb-2 cursor-pointer hover:bg-[#2a2a2a]';
-                    div.onclick = () => selectUser(u.username);
-                    div.innerHTML = `
-                        <img src="${u.avatar}" class="w-10 h-10 rounded-full">
-                        <div>
-                            <p class="text-white font-medium">${u.nama}</p>
-                            <p class="text-xs text-gray-400">@${u.username}</p>
-                        </div>
-                    `;
-                    userList.appendChild(div);
+            socket.on('connect', () => {
+                console.log('Socket connected');
+                socket.emit('login', user.username);
+            });
+            
+            socket.on('user-location', (data) => {
+                updateMarker(data.username, data.lat, data.lng);
+            });
+            
+            socket.on('user-online', (username) => {
+                onlineUsers.add(username);
+                updateUserStatus(username, 'online');
+            });
+            
+            socket.on('user-offline', (username) => {
+                onlineUsers.delete(username);
+                updateUserStatus(username, 'offline');
+            });
+            
+            socket.on('new-message', (data) => {
+                if (data.from === selectedUser || data.to === selectedUser) {
+                    loadChat(selectedUser);
                 }
             });
         }
+        initSocket();
+
+        // ============================================
+        // UPDATE MARKER DI MAP
+        // ============================================
+        function updateMarker(username, lat, lng) {
+            if (markers[username]) {
+                markers[username].setLatLng([lat, lng]);
+            } else {
+                markers[username] = L.marker([lat, lng]).addTo(map)
+                    .bindPopup(`
+                        <div class="text-center">
+                            <strong>${username}</strong>
+                            <br>
+                            <span class="text-xs">Online</span>
+                        </div>
+                    `);
+            }
+        }
+
+        // ============================================
+        // LOAD USERS
+        // ============================================
+        async function loadUsers() {
+            try {
+                const res = await fetch(API_URL + '/api/users');
+                const data = await res.json();
+                
+                const userList = document.getElementById('userList');
+                userList.innerHTML = '';
+                
+                data.users.forEach(u => {
+                    if (u.username !== user.username) {
+                        const status = onlineUsers.has(u.username) ? 'online' : 'offline';
+                        const statusColor = status === 'online' ? 'bg-green-500' : 'bg-gray-500';
+                        
+                        const div = document.createElement('div');
+                        div.id = `user-${u.username}`;
+                        div.className = 'flex items-center gap-3 p-3 bg-[#1a1a1a] rounded-lg mb-2 cursor-pointer hover:bg-[#2a2a2a] transition';
+                        div.onclick = () => selectUser(u.username, u.nama);
+                        div.innerHTML = `
+                            <div class="relative">
+                                <img src="${u.avatar}" class="w-10 h-10 rounded-full">
+                                <span class="absolute bottom-0 right-0 w-3 h-3 ${statusColor} rounded-full border-2 border-[#1a1a1a]"></span>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-white font-medium">${u.nama}</p>
+                                <p class="text-xs text-gray-400">@${u.username}</p>
+                            </div>
+                        `;
+                        userList.appendChild(div);
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading users:', error);
+            }
+        }
         loadUsers();
 
-        // Profile
-        document.getElementById('avatar').src = user.avatar;
-        document.getElementById('nama').textContent = user.nama;
+        // ============================================
+        // UPDATE STATUS USER
+        // ============================================
+        function updateUserStatus(username, status) {
+            const userDiv = document.getElementById(`user-${username}`);
+            if (userDiv) {
+                const dot = userDiv.querySelector('span');
+                if (dot) {
+                    dot.className = `absolute bottom-0 right-0 w-3 h-3 ${status === 'online' ? 'bg-green-500' : 'bg-gray-500'} rounded-full border-2 border-[#1a1a1a]`;
+                }
+            }
+        }
 
-        function selectUser(username) {
+        // ============================================
+        // SELECT USER
+        // ============================================
+        function selectUser(username, nama) {
             selectedUser = username;
+            document.getElementById('chatWith').textContent = `@${nama || username}`;
+            
+            // Highlight user yang dipilih
+            document.querySelectorAll('[id^="user-"]').forEach(el => {
+                el.classList.remove('bg-[#2a2a2a]', 'border-l-4', 'border-[#1DB954]');
+            });
+            const selectedEl = document.getElementById(`user-${username}`);
+            if (selectedEl) {
+                selectedEl.classList.add('bg-[#2a2a2a]', 'border-l-4', 'border-[#1DB954]');
+            }
+            
+            // Enable chat input
+            document.getElementById('chatInput').disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('chatInput').focus();
+            
+            // Load chat history
             loadChat(username);
         }
 
+        // ============================================
+        // LOAD CHAT
+        // ============================================
         async function loadChat(to) {
-            const res = await fetch(API_URL + `/api/messages/${user.username}/${to}`);
-            const data = await res.json();
-            
-            const chatDiv = document.getElementById('chatMessages');
-            chatDiv.innerHTML = '';
-            
-            data.messages.forEach(msg => {
-                const div = document.createElement('div');
-                div.className = msg.from === user.username ? 'text-right mb-2' : 'mb-2';
-                div.innerHTML = `
-                    <div class="inline-block bg-[#1a1a1a] text-white p-2 rounded-lg max-w-xs">
-                        <p class="text-xs text-[#1DB954] mb-1">${msg.from}</p>
-                        <p>${msg.message}</p>
-                    </div>
-                `;
-                chatDiv.appendChild(div);
-            });
+            try {
+                const res = await fetch(API_URL + `/api/messages/${user.username}/${to}`);
+                const data = await res.json();
+                
+                const chatDiv = document.getElementById('chatMessages');
+                chatDiv.innerHTML = '';
+                
+                if (data.messages && data.messages.length > 0) {
+                    data.messages.forEach(msg => {
+                        const isMe = msg.from === user.username;
+                        const div = document.createElement('div');
+                        div.className = `mb-3 ${isMe ? 'text-right' : ''}`;
+                        div.innerHTML = `
+                            <div class="inline-block max-w-[80%] ${isMe ? 'bg-[#1DB954]' : 'bg-[#2a2a2a]'} rounded-lg px-3 py-2">
+                                <p class="text-xs text-${isMe ? 'white' : 'gray-400'} mb-1">${isMe ? 'Kamu' : msg.from}</p>
+                                <p class="text-white text-sm">${msg.message}</p>
+                                <p class="text-${isMe ? 'green-200' : 'gray-500'} text-xs mt-1">${new Date(msg.timestamp).toLocaleTimeString()}</p>
+                            </div>
+                        `;
+                        chatDiv.appendChild(div);
+                    });
+                } else {
+                    chatDiv.innerHTML = '<div class="text-center text-gray-500 text-sm py-4">Belum ada pesan</div>';
+                }
+                
+                chatDiv.scrollTop = chatDiv.scrollHeight;
+            } catch (error) {
+                console.error('Error loading chat:', error);
+            }
         }
 
+        // ============================================
+        // SEND MESSAGE
+        // ============================================
         function sendMessage() {
             const input = document.getElementById('chatInput');
             const message = input.value.trim();
@@ -149,37 +298,73 @@
                 message
             });
             
+            // Tambah pesan ke chat (optimistic)
+            const chatDiv = document.getElementById('chatMessages');
+            const div = document.createElement('div');
+            div.className = 'text-right mb-3';
+            div.innerHTML = `
+                <div class="inline-block max-w-[80%] bg-[#1DB954] rounded-lg px-3 py-2">
+                    <p class="text-xs text-white mb-1">Kamu</p>
+                    <p class="text-white text-sm">${message}</p>
+                    <p class="text-green-200 text-xs mt-1">Baru saja</p>
+                </div>
+            `;
+            chatDiv.appendChild(div);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+            
             input.value = '';
         }
 
-        socket.on('new-message', (data) => {
-            if (data.from === selectedUser || data.to === selectedUser) {
-                loadChat(selectedUser);
-            }
-        });
-
-        // Get location
+        // ============================================
+        // GET LOCATION
+        // ============================================
         if (navigator.geolocation) {
-            navigator.geolocation.watchPosition((pos) => {
-                const {latitude, longitude} = pos.coords;
-                
-                fetch(API_URL + '/api/location', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        token: localStorage.getItem('token'),
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    const { latitude, longitude } = pos.coords;
+                    
+                    document.getElementById('locationStatus').innerHTML = 
+                        `<i class="fas fa-check-circle text-[#1DB954] mr-2"></i>Lokasi aktif`;
+                    
+                    // Kirim ke backend
+                    fetch(API_URL + '/api/location', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            token: localStorage.getItem('token'),
+                            lat: latitude,
+                            lng: longitude
+                        })
+                    });
+                    
+                    // Kirim via socket
+                    socket.emit('send-location', {
+                        username: user.username,
                         lat: latitude,
                         lng: longitude
-                    })
-                });
-                
-                socket.emit('send-location', {
-                    username: user.username,
-                    lat: latitude,
-                    lng: longitude
-                });
-            });
+                    });
+                    
+                    // Update marker sendiri
+                    updateMarker(user.username, latitude, longitude);
+                    
+                    // Center map ke posisi sendiri
+                    map.setView([latitude, longitude], 13);
+                },
+                (err) => {
+                    document.getElementById('locationStatus').innerHTML = 
+                        `<i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>Gagal dapat lokasi`;
+                }
+            );
+        } else {
+            document.getElementById('locationStatus').innerHTML = 
+                `<i class="fas fa-times-circle text-red-500 mr-2"></i>Browser gak support GPS`;
         }
+
+        // ============================================
+        // PROFILE
+        // ============================================
+        document.getElementById('avatar').src = user.avatar;
+        document.getElementById('nama').textContent = user.nama;
     </script>
 </body>
 </html>
